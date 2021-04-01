@@ -23,6 +23,8 @@ coverage-artifacts/
 *.outputParameter
 flat/
 venv/
+artifacts/
+cache/
 
 # python stuff
 .eggs
@@ -32,3 +34,6 @@ python-packages/*/build
 python-packages/*/dist
 __pycache__
 python-packages/*/*.egg-info
+
+# IDEs
+.idea/

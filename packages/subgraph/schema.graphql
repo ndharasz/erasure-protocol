@@ -365,6 +365,35 @@ type StakeBurnedCountdownGriefing @entity {
   logIndex: BigInt!
 }
 
+type SimpleGriefingWithFeesStakeholder @entity {
+  address: Bytes
+  numStakeTokens: BigInt
+}
+
+# Simple griefing with fees
+type SimpleGriefingWithFees @entity {
+  id: ID!
+  creator: Bytes
+  operator: Bytes
+  staker: Bytes
+  totalStakeTokens: BigInt
+  isReleased: Boolean
+  stakeholders: [SimpleGriefingWithFeesStakeholder!]!
+  tokenID: Int
+  currentStake: BigInt
+  totalBurned: BigInt
+  totalTaken: BigInt
+  counterparty: Bytes
+  ratio: BigInt
+  ratioType: Int
+  metadata: Bytes
+  metadataB58: String
+  initMetadata: Bytes
+  initMetadataB58: String
+  initCallData: Bytes
+  createdTimestamp: BigInt
+}
+
 # Simple griefing
 type SimpleGriefing @entity {
   id: ID!

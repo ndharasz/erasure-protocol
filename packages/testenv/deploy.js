@@ -216,6 +216,16 @@ const main = async () => {
     constants.RATIO_TYPES.Dec,
     mockData.metadata,
   ])
+  // SimpleGriefingWithFees
+  await createInstance('SimpleGriefingWithFees', SimpleGriefingWithFees_Factory, [
+    mockData.userAddress,
+    mockData.userAddress,
+    mockData.userAddress,
+    constants.TOKEN_TYPES.NMR,
+    ethers.utils.parseEther('1'),
+    constants.RATIO_TYPES.Dec,
+    mockData.metadata,
+  ])
   // CountdownGriefing
   await createInstance('CountdownGriefing', CountdownGriefing_Factory, [
     mockData.userAddress,

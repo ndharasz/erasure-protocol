@@ -116,9 +116,21 @@ _Revealing a Post_
 
 See [latest release](https://github.com/erasureprotocol/erasure-protocol/releases).
 
+## Local Dev and Testing
+You need node/npm/yarn, install with `yarn install`. If you have new solidity contracts, you have to compile them into
+App Binaries (ABIs) with `yarn run compile`, then copy the new json files from `build/` to `packages/abis/src/v.../abis/`.
+Use the [Local Dev Environment](packages/testenv) to start mock blockchain services on your local machine.
+Run `yarn run test` to run tests in `test/*`, you may run in into an issue like this:
+```
+Error: Cannot find module './build/Release/scrypt'
+```
+So in `node_modules/scrypt/index.js` change `require("./build/Release/scrypt")` to `require("scrypt")`.
+More errors will follow, working on these now.
+
+
 ## Packages
 
 - [Erasure Abis](packages/abis)
 - [Erasure Crypto + IPFS Helpers](packages/crypto-ipfs)
 - [GraphQL Client](packages/the-graph)
-- [Local Dev Environment](packages/testenv)
+- 
