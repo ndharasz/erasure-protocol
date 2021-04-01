@@ -18,6 +18,7 @@
     "compile": "yarn etherlime compile --deleteCompiledFiles=true",
     "flatten": "yarn etherlime flatten",
     "test": "bash setup-etherlime-tests.sh && yarn etherlime test --timeout=500000",
+    "debug": "bash setup-etherlime-tests.sh && yarn etherlime test --timeout=500000",
     "deploy": "yarn etherlime deploy ./deployment/deploy_v130.js --compile=true",
     "format": "yarn prettier -c 'test/**/*.js' -c 'deployment/**/*.js' --config .prettierrc"
   },
@@ -26,7 +27,8 @@
     "@erasure/crypto-ipfs": "^1.2.5",
     "@openzeppelin/contracts": "^2.4.0",
     "dotenv": "^8.0.0",
-    "etherlime": "^2.2.6",
+    "etherlime": "^2.3.5",
+    "ganache-cli": "^6.12.2",
     "etherlime-lib": "^1.1.7",
     "ethers": "^4.0.32",
     "prettier": "^1.19.1",

@@ -29,8 +29,9 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     struct Data {
         address staker;
         address counterparty;
+        uint256 totalValue;
         uint256 totalStakeTokens;
-        bool isReleased;
+        bool released;
         mapping (address => uint256) stakeholders;
     }
 
@@ -67,7 +68,6 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // set storage values
         _data.staker = staker;
         _data.counterparty = counterparty;
-        _data.isReleased = false;
 
         // set operator
         if (operator != address(0)) {
@@ -106,42 +106,46 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     ///      State Machine: anytime
     /// @param amountToAdd uint256 amount of tokens (18 decimals) to be added to the stake
     function increaseStake(uint256 amountToAdd) public {
-        TokenManager.Tokens tokenID = Griefing.getTokenID(msg.sender);
+        require(!isCounterparty(msg.sender), "only staker or operator");
 
         // add stake
-        Staking._addStake(tokenID, msg.sender, msg.sender, amountToAdd);
+        Staking._addStake(Griefing.getTokenID(_data.staker), msg.sender, msg.sender, amountToAdd);
 
         // generate stake tokens
-        uint256 currStake = Deposit.getDeposit(tokenID, msg.sender);
-        uint256 tokensToAdd = (amountToAdd / currStake) * _data.totalStakeTokens;
-        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].add(tokensToAdd);
-        _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
+//        uint256 tokensToAdd = 1;
+//        if (_data.totalValue > 0) {
+//            tokensToAdd = amountToAdd.div(_data.totalValue).mul(_data.totalStakeTokens);
+//        }
+//        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].add(tokensToAdd);
+//        _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
+//        _data.totalValue = _data.totalValue.add(amountToAdd);
     }
 
     /// @notice Called by the staker to increase the stake
     ///          - tokens (ERC-20) are transfered from the caller and requires approval of this contract for appropriate amount
     /// @dev Access Control: staker OR operator
     ///      State Machine: anytime
-    /// @param tokensToRedeem uint256 amount of stakeTokens (18 decimals) to be redeemed for stake
-    function redeemStake(uint256 tokensToRedeem) public {
-        // declare variable in memory
-        TokenManager.Tokens tokenID = Griefing.getTokenID(msg.sender);
-        uint256 currStake = Deposit.getDeposit(tokenID, msg.sender);
-        uint256 currTokens = _data.stakeholders[msg.sender];
+    /// @param amountToRedeem uint256 amount of stakeTokens (18 decimals) to be redeemed for stake
+    function redeemStake(uint256 amountToRedeem) public {
+        // make sure stake redemption is allowed
+        require(_data.released, "stake must be released by counterparty or operator");
+        require(_data.totalValue > 0, "no stake left to redeem");
+
+        // declare variables in memory
+        uint256 userTokens = _data.stakeholders[msg.sender];
+        uint256 tokensToRedeem = amountToRedeem.div(_data.totalValue).mul(_data.totalStakeTokens);
 
         // make sure they aren't redeeming more than allowed
-        require(_data.isReleased, "stake must be released by counterparty or operator");
-        require(_data.totalStakeTokens > 0, "no stake tokens left to redeem");
-        require(tokensToRedeem > 0, "must redeem positive amount");
-        require(tokensToRedeem <= currTokens, "cannot redeem more stake than you have");
+        require(userTokens > 0, "you have no stake in this contract");
+        require(userTokens >= tokensToRedeem, "cannot redeem more stake than you have");
 
         // redeem stake
-        uint256 stakeToRedeem = (tokensToRedeem / _data.totalStakeTokens) *  currStake;
-        Staking._takeStake(tokenID, msg.sender, msg.sender, stakeToRedeem);
+        Staking._takeStake(Griefing.getTokenID(_data.staker), msg.sender, msg.sender, amountToRedeem);
 
         // remove stake tokens
         _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].sub(tokensToRedeem);
         _data.totalStakeTokens = _data.totalStakeTokens.sub(tokensToRedeem);
+        _data.totalValue = _data.totalValue.sub(amountToRedeem);
     }
 
 
@@ -159,6 +163,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // add stake
         Staking._addStake(Griefing.getTokenID(staker), staker, msg.sender, amountToAdd);
+        _data.totalValue = _data.totalValue.add(amountToAdd);
     }
 
     /// @notice Called by the counterparty to punish the stake
@@ -176,6 +181,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // execute griefing
         cost = Griefing._grief(msg.sender, _data.staker, punishment, message);
+        _data.totalValue = _data.totalValue.sub(punishment);
     }
 
     /// @notice Called by the counterparty to release the stake to the staker
@@ -185,7 +191,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // restrict access
         require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
 
-        _data.isReleased = true;
+        _data.released = true;
     }
 
     /// @notice Called by the operator to transfer control to new operator
@@ -277,5 +283,28 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     /// @return validity bool true if correct state
     function isStaked() internal view returns (bool validity) {
         return getAgreementStatus() == AgreementStatus.isStaked;
+    }
+
+    /// @notice Validate if the stake has been released
+    /// @return validity bool true if stake is released
+    function isReleased() public view returns (bool validity) {
+        return _data.released;
+    }
+
+    /// @notice Get the total number of stake tokens assigned to stakeholders
+    /// @return tokens uint256 total stake tokens
+    function getTotalStakeTokens() public view returns (uint256 tokens) {
+        return _data.totalStakeTokens;
+    }
+
+    /// @notice Get the number of stake tokens assigned to given stakeholde
+    /// @param stakeholder address for which to get tokens
+    /// @return tokens uint256 number of tokens for this stakeholder
+    function getStakeholderValue(address stakeholder) public view returns (uint256 tokens) {
+        if (_data.totalValue > 0) {
+            return _data.stakeholders[stakeholder].div(_data.totalStakeTokens).mul(_data.totalValue);
+        } else {
+            return 0;
+        }
     }
 }
