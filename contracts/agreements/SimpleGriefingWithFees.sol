@@ -33,6 +33,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         uint256 totalStakeTokens;
         bool released;
         mapping (address => uint256) stakeholders;
+        uint256 feeRatio;
+        uint256 managementFee;
     }
 
     event Initialized(
@@ -42,6 +44,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         TokenManager.Tokens tokenID,
         uint256 ratio,
         Griefing.RatioType ratioType,
+        uint256 feeRatio,
+        uint256 managementFee;
         bytes metadata
     );
 
@@ -63,6 +67,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         TokenManager.Tokens tokenID,
         uint256 ratio,
         Griefing.RatioType ratioType,
+        uint256 feeRatio,
+        uint256 managementFee,
         bytes memory metadata
     ) public initializeTemplate() {
         // set storage values
@@ -76,6 +82,10 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // set griefing ratio
         Griefing._setRatio(staker, tokenID, ratio, ratioType);
+
+        // sest feeRatio
+        _data.feeRatio = feeRatio;
+        _data.managementFee = managementFee;
 
         // set metadata
         if (metadata.length != 0) {
@@ -142,7 +152,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         Staking._takeStake(Griefing.getTokenID(_data.staker), _data.staker, stakeholder, nmrToRedeem);
 
         // remove stake tokens
-        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholer].sub(tokensToRedeem);
+        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].sub(tokensToRedeem);
         _data.totalStakeTokens = _data.totalStakeTokens.sub(tokensToRedeem);
         _data.totalValue = _data.totalValue.sub(nmrToRedeem);
     }
@@ -160,9 +170,16 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // declare variable in memory
         address staker = _data.staker;
 
+        // give some proportion of stake tokens to the staker to represent their increased share
+        uint256 profit = amountToAdd.div(_data.totalValue);
+        uint256 tokenInflation = profit.mul(_data.feeRatio).mul(_data.totalStakeTokens);
+        _data.stakeholders[staker] = _data.stakeholders[staker].add(tokenInflation);
+        _data.totalStakeTokens = _data.totalStakeTokens.add(tokenInflation);
+
         // add stake
         Staking._addStake(Griefing.getTokenID(staker), staker, msg.sender, amountToAdd);
         _data.totalValue = _data.totalValue.add(amountToAdd);
+
     }
 
     /// @notice Called by the counterparty to punish the stake
@@ -178,9 +195,31 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // restrict access
         require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
 
+        // declare variable in memory
+        address staker = _data.staker;
+
+        // give some proportion of stake tokens to the staker to represent their increased share
+        uint256 loss = punishment.div(_data.totalValue);
+        uint256 tokenDeflation = loss.mul(_data.feeRatio).mul(_data.totalStakeTokens);
+        _data.stakeholders[staker] = _data.stakeholders[staker].sub(tokenDeflation);
+        _data.totalStakeTokens = _data.totalStakeTokens.sub(tokenDeflation);
+
         // execute griefing
-        cost = Griefing._grief(msg.sender, _data.staker, punishment, message);
+        cost = Griefing._grief(msg.sender, staker, punishment, message);
         _data.totalValue = _data.totalValue.sub(punishment);
+    }
+
+    function distributeManagementFee() {
+        // restrict access
+        require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
+
+        // declare variable in memory
+        address staker = _data.staker;
+
+        // inflate tokens by managementFee * totalStakeTokens
+        inflation = _data.managementFee.mul(_data.totalStakeTokens)
+        _data.stakeholders[staker] = _data.stakeholder[staker].add(inflation)
+        _data.totalStakeTokens = _data.totalStakeTokens.add(inflation)
     }
 
     /// @notice Called by the counterparty to release the stake to the staker
