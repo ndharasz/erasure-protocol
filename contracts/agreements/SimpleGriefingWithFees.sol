@@ -45,7 +45,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         uint256 ratio,
         Griefing.RatioType ratioType,
         uint256 feeRatio,
-        uint256 managementFee;
+        uint256 managementFee,
         bytes metadata
     );
 
@@ -119,16 +119,17 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         require(!isCounterparty(msg.sender), "only staker or operator");
 
         // add stake
-        Staking._addStake(Griefing.getTokenID(_data.staker), msg.sender, msg.sender, amountToAdd);
+        address staker = _data.staker;
+        Staking._addStake(Griefing.getTokenID(staker), msg.sender, msg.sender, amountToAdd);
 
         // generate stake tokens
-//        uint256 tokensToAdd = 1;
-//        if (_data.totalValue > 0) {
-//            tokensToAdd = amountToAdd.div(_data.totalValue).mul(_data.totalStakeTokens);
-//        }
-//        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].add(tokensToAdd);
-//        _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
-//        _data.totalValue = _data.totalValue.add(amountToAdd);
+        uint256 tokensToAdd = 1;
+        if (_data.totalValue > 0) {
+            tokensToAdd = amountToAdd.div(_data.totalValue).mul(_data.totalStakeTokens);
+        }
+        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].add(tokensToAdd);
+        _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
+        _data.totalValue = _data.totalValue.add(amountToAdd);
     }
 
     /// @notice Called by the staker to increase the stake
@@ -148,8 +149,11 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         require(_data.totalValue > 0, "no stake left to redeem");
         require(userTokensAvailable >= tokensToRedeem, "cannot redeem more stake than you have");
 
+        // declare variable in memory
+        address staker = _data.staker;
+
         // redeem stake
-        Staking._takeStake(Griefing.getTokenID(_data.staker), _data.staker, stakeholder, nmrToRedeem);
+        Staking._takeStake(Griefing.getTokenID(staker), staker, msg.sender, amountToRedeem);
 
         // remove stake tokens
         _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].sub(tokensToRedeem);
@@ -217,9 +221,9 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         address staker = _data.staker;
 
         // inflate tokens by managementFee * totalStakeTokens
-        inflation = _data.managementFee.mul(_data.totalStakeTokens)
-        _data.stakeholders[staker] = _data.stakeholder[staker].add(inflation)
-        _data.totalStakeTokens = _data.totalStakeTokens.add(inflation)
+        inflation = _data.managementFee.mul(_data.totalStakeTokens);
+        _data.stakeholders[staker] = _data.stakeholder[staker].add(inflation);
+        _data.totalStakeTokens = _data.totalStakeTokens.add(inflation);
     }
 
     /// @notice Called by the counterparty to release the stake to the staker
