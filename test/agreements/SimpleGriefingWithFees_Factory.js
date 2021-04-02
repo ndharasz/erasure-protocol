@@ -14,17 +14,21 @@ const tokenID = TOKEN_TYPES.NMR
 const factoryName = 'SimpleGriefingWithFees_Factory'
 const instanceType = 'Agreement'
 const ratio = ethers.utils.parseEther('2')
+const feeRatio = ethers.utils.parseEther('0.2')
+const mgmtFee = ethers.utils.parseEther('0.01')
 const ratioType = RATIO_TYPES.Dec
 const staticMetadata = 'TESTING'
 
 const createTypes = [
-  'address',
-  'address',
-  'address',
-  'uint8',
-  'uint256',
-  'uint8',
-  'bytes',
+'address',
+'address',
+'address',
+'uint8',
+'uint256',
+'uint8',
+'uint256',
+'uint256',
+'bytes',
 ]
 
 let SimpleGriefingWithFees
@@ -48,6 +52,8 @@ function runFactoryTest() {
         tokenID,
         ratio,
         ratioType,
+        feeRatio,
+        mgmtFee,
         Buffer.from(staticMetadata),
       ]
 

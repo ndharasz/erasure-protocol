@@ -27,6 +27,8 @@ describe('SimpleGriefingWithFees', function() {
   const ratio = 2
   const ratioE18 = ethers.utils.parseEther(ratio.toString())
   const ratioType = RATIO_TYPES.Dec
+  const feeRatio = ethers.utils.parseEther('10')
+  const mgmtFee = ethers.utils.parseEther('10')
   const staticMetadata = 'TESTING'
   let currentStake // to increment as we go
 
@@ -37,6 +39,8 @@ describe('SimpleGriefingWithFees', function() {
     'uint8',
     'uint256',
     'uint8',
+    'uint256',
+    'uint256',
     'bytes',
   ]
 
@@ -47,6 +51,8 @@ describe('SimpleGriefingWithFees', function() {
     tokenID,
     ratioE18,
     ratioType,
+    feeRatio,
+    mgmtFee,
     Buffer.from(staticMetadata),
   ]
 
@@ -143,7 +149,6 @@ describe('SimpleGriefingWithFees', function() {
       assert.equal(actualRatio.toString(), ratioE18.toString())
       assert.equal(actualRatioType, ratioType)
 
-      assert.equal(await this.TestSimpleGriefingWithFees.isReleased(), false)
       assert.equal(await this.TestSimpleGriefingWithFees.getTotalStakeTokens(), 0)
       assert.equal(await this.TestSimpleGriefingWithFees.getStakeholderValue(staker), 0)
     })
@@ -191,10 +196,14 @@ describe('SimpleGriefingWithFees', function() {
     })
   })
 
+// TODO: add 3rd party stakers
   describe('SimpleGriefingWithFees.increaseStake', () => {
-    let amountToAdd = 500 // 500 token weis
+    let DEFAULT_AMOUNT = 500 // 500 token weis
 
-    const increaseStake = async sender => {
+    const increaseStake = async (sender, amountToAdd) => {
+      const initialVal = web3.utils.hexToNumberString(
+          (await this.TestSimpleGriefingWithFees.getStakeholderValue(staker))._hex
+      )
       await NMR.from(sender).approve(
         this.TestSimpleGriefingWithFees.contractAddress,
         amountToAdd,
@@ -216,11 +225,21 @@ describe('SimpleGriefingWithFees', function() {
 
       assert.isDefined(depositIncreasedEvent)
       assert.equal(depositIncreasedEvent.args.tokenID, tokenID)
-      assert.equal(depositIncreasedEvent.args.user, sender)
+      assert.equal(depositIncreasedEvent.args.user, staker)
       assert.equal(depositIncreasedEvent.args.amount.toNumber(), amountToAdd)
-      const val = await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)
-      assert.equal(web3.utils.hexToNumberString(val._hex), amountToAdd)
-      console.log()
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getTotalStakeTokens()),
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker))
+      )
+      console.log(web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)))
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)),
+        web3.utils.toWei((currentStake/amountToAdd).toString())
+      )
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)),
+        currentStake,
+      )
     }
 
     it('should revert when msg.sender is counterparty', async () => {
@@ -228,36 +247,48 @@ describe('SimpleGriefingWithFees', function() {
       currentStake = (await this.TestSimpleGriefingWithFees.getStake()).toNumber()
 
       // use the counterparty to be the msg.sender
-      await assert.revertWith(
-        this.TestSimpleGriefingWithFees.from(counterparty).increaseStake(amountToAdd),
-        'only staker or operator',
+      assert.revertWith(
+        this.TestSimpleGriefingWithFees.from(counterparty).increaseStake(DEFAULT_AMOUNT),
+        'only stakeholder or operator'
       )
     })
 
-//    it('should increase when msg.sender is deactivated operator', async () => {
-//      this.DeactivatedGriefing.from(operator).increaseStake(amountToAdd, {
-//        gasLimit: 3000000,
-//      })
-//      await assert.revertWith(
-//        await this.DeactivatedGriefing.getStakeholderValue(operator),
-//        amountToAdd,
-//      )
-//    })
+    it('should increase when msg.sender is deactivated operator (3rd party)', async () => {
+      await NMR.from(operator).approve(
+        this.DeactivatedGriefing.contractAddress,
+        DEFAULT_AMOUNT,
+      )
+      await this.DeactivatedGriefing.from(operator).increaseStake(DEFAULT_AMOUNT, {
+        gasLimit: 3000000,
+      })
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.DeactivatedGriefing.getTotalStakeTokens()),
+        web3.utils.hexToNumberString(await this.DeactivatedGriefing.getStakeholderTokens(operator))
+      )
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.DeactivatedGriefing.getStakeholderValue(operator)),
+        DEFAULT_AMOUNT,
+      )
+    })
 
     it('should increase stake when msg.sender is staker', async () => {
-      await increaseStake(staker)
+      await increaseStake(staker, DEFAULT_AMOUNT)
     })
 
     it('should increase stake when msg.sender is operator', async () => {
-      await increaseStake(operator)
+      await increaseStake(operator, 100)
     })
   })
 
+// TODO: check fee calc
   describe('SimpleGriefingWithFees.reward', () => {
     let currentStake // to increment as we go
     let amountToAdd = 500 // 500 token weis
 
     const reward = async sender => {
+      const initialVal = web3.utils.hexToNumberString(
+          (await this.TestSimpleGriefingWithFees.getStakeholderValue(staker))._hex
+      )
       // update currentStake
       currentStake = (await this.TestSimpleGriefingWithFees.getStake()).toNumber()
 
@@ -266,6 +297,9 @@ describe('SimpleGriefingWithFees', function() {
         amountToAdd,
       )
 
+      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
+      )))
       const txn = await this.TestSimpleGriefingWithFees.from(sender).reward(amountToAdd)
 
       currentStake += amountToAdd
@@ -287,8 +321,26 @@ describe('SimpleGriefingWithFees', function() {
       assert.equal(depositIncreasedEvent.args.tokenID, tokenID)
       assert.equal(depositIncreasedEvent.args.user, staker)
       assert.equal(depositIncreasedEvent.args.amount.toNumber(), amountToAdd)
-      const val = await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)
-      assert.equal(web3.utils.hexToNumberString(val._hex), amountToAdd)
+      await assert.equal(
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getTotalStakeTokens()),
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker))
+      )
+      assert.equal(
+        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)),
+        currentStake
+      )
+
+      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
+      )))
+
+      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
+      ))*mgmtFee)
+      await this.TestSimpleGriefingWithFees.from(operator).distributeManagementFee()
+      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
+      )))
     }
 
     it('should revert when msg.sender is staker', async () => {
@@ -318,4 +370,209 @@ describe('SimpleGriefingWithFees', function() {
     })
   })
 
+//TODO: fix these tests for parity + add fee and 3rd party stakeholders
+//  describe('SimpleGriefing.punish', () => {
+//    const from = counterparty
+//    const message = "I don't like you"
+//    const punishArgs = [from, punishment, Buffer.from(message)]
+//    currentStake = ethers.utils.bigNumberify('0')
+//
+//    const punishStaker = async () => {
+//      // increase staker's stake to 500
+//      await NMR.from(staker).approve(
+//        this.TestSimpleGriefing.contractAddress,
+//        stakerStake,
+//      )
+//      await this.TestSimpleGriefing.from(staker).increaseStake(stakerStake)
+//      currentStake = currentStake.add(stakerStake)
+//
+//      const expectedCost = punishment.mul(ratio)
+//
+//      await NMR.from(counterparty).approve(
+//        this.TestSimpleGriefing.contractAddress,
+//        expectedCost,
+//      )
+//
+//      const txn = await this.TestSimpleGriefing.from(counterparty).punish(
+//        punishment,
+//        Buffer.from(message),
+//      )
+//      const receipt = await this.TestSimpleGriefing.verboseWaitForTransaction(
+//        txn,
+//      )
+//
+//      // deducting current stake to be used in subsequent increaseStake call
+//      currentStake = currentStake.sub(punishment)
+//
+//      const expectedEvent = 'Griefed'
+//
+//      const griefedEvent = receipt.events.find(
+//        emittedEvent => emittedEvent.event === expectedEvent,
+//        'There is no such event',
+//      )
+//
+//      assert.isDefined(griefedEvent)
+//      assert.equal(griefedEvent.args.punisher, counterparty)
+//      assert.equal(griefedEvent.args.staker, staker)
+//      assert.equal(
+//        griefedEvent.args.punishment.toString(),
+//        punishment.toString(),
+//      )
+//      assert.equal(griefedEvent.args.cost.toString(), expectedCost.toString())
+//      assert.equal(
+//        griefedEvent.args.message,
+//        ethers.utils.hexlify(ethers.utils.toUtf8Bytes(message)),
+//      )
+//    }
+//
+//    it('should revert when msg.sender is not counterparty or active operator', async () => {
+//      // update currentStake
+//      currentStake = await this.TestSimpleGriefing.getStake()
+//
+//      // staker is not counterparty or operator
+//      await assert.revertWith(
+//        this.TestSimpleGriefing.from(staker).punish(
+//          punishment,
+//          Buffer.from(message),
+//        ),
+//        'only counterparty or operator',
+//      )
+//    })
+//
+//    it('should revert when no approval to burn tokens', async () => {
+//      await assert.revertWith(
+//        this.TestSimpleGriefing.from(counterparty).punish(
+//          punishment,
+//          Buffer.from(message),
+//        ),
+//        'nmr burnFrom failed',
+//      )
+//    })
+//
+//    it('should punish staker', async () => await punishStaker())
+//  })
+//
+//  describe('SimpleGriefing.releaseStake', () => {
+//    let currentStake
+//    const releaseAmount = ethers.utils.parseEther('100')
+//
+//    const releaseStake = async (sender, staker, releaseAmount) => {
+//      const currentStake = await this.TestSimpleGriefing.getStake()
+//
+//      const txn = await this.TestSimpleGriefing.from(sender).releaseStake(
+//        releaseAmount,
+//      )
+//      const receipt = await this.TestSimpleGriefing.verboseWaitForTransaction(
+//        txn,
+//      )
+//      const [DepositDecreasedEvent] = utils.parseLogs(
+//        receipt,
+//        this.TestSimpleGriefing,
+//        'DepositDecreased',
+//      )
+//
+//      assert.equal(DepositDecreasedEvent.tokenID, tokenID)
+//      assert.equal(DepositDecreasedEvent.user, staker)
+//      assert.equal(
+//        DepositDecreasedEvent.amount.toString(),
+//        releaseAmount.toString(),
+//      )
+//    }
+//
+//    it('should revert when msg.sender is not counterparty or active operator', async () => {
+//      currentStake = await this.TestSimpleGriefing.getStake()
+//
+//      await assert.revertWith(
+//        this.TestSimpleGriefing.from(staker).releaseStake(releaseAmount),
+//        'only counterparty or operator',
+//      )
+//    })
+//
+//    it('should revert when msg.sender is operator but not active', async () => {
+//      await assert.revertWith(
+//        this.DeactivatedGriefing.from(operator).releaseStake(releaseAmount),
+//        'only counterparty or operator',
+//      )
+//    })
+//
+//    it('should release stake when msg.sender is counterparty', async () =>
+//      await releaseStake(counterparty, staker, releaseAmount))
+//
+//    it('should release full stake', async () => {
+//      const currentStake = await this.TestSimpleGriefing.getStake()
+//      await releaseStake(counterparty, staker, currentStake)
+//    })
+//
+//    it('should release stake when msg.sender is active operator', async () => {
+//      // have to re-increase stake to release
+//      await NMR.from(staker).approve(
+//        this.TestSimpleGriefing.contractAddress,
+//        stakerStake,
+//      )
+//
+//      const currentStake = await this.TestSimpleGriefing.getStake()
+//
+//      await this.TestSimpleGriefing.from(staker).increaseStake(stakerStake)
+//
+//      await releaseStake(operator, staker, releaseAmount)
+//    })
+//  })
+//
+//  describe('SimpleGriefing.transferOperator', () => {
+//    it('should revert when msg.sender is not operator', async () => {
+//      await assert.revertWith(
+//        this.TestSimpleGriefing.from(counterparty).transferOperator(
+//          newOperator,
+//        ),
+//        'only operator',
+//      )
+//    })
+//
+//    it('should revert when msg.sender is not active operator', async () => {
+//      await assert.revertWith(
+//        this.DeactivatedGriefing.from(counterparty).transferOperator(
+//          newOperator,
+//        ),
+//        'only operator',
+//      )
+//    })
+//
+//    it('should transfer operator', async () => {
+//      const txn = await this.TestSimpleGriefing.from(operator).transferOperator(
+//        newOperator,
+//      )
+//      await assert.emitWithArgs(txn, 'OperatorUpdated', [newOperator])
+//
+//      const actualOperator = await this.TestSimpleGriefing.getOperator()
+//      assert.equal(actualOperator, newOperator)
+//    })
+//  })
+//
+//  describe('SimpleGriefing.renounceOperator', () => {
+//    it('should revert when msg.sender is not operator', async () => {
+//      await assert.revertWith(
+//        this.TestSimpleGriefing.from(counterparty).renounceOperator(),
+//        'only operator',
+//      )
+//    })
+//
+//    it('should revert when msg.sender is not active operator', async () => {
+//      await assert.revertWith(
+//        this.DeactivatedGriefing.from(operator).renounceOperator(),
+//        'only operator',
+//      )
+//    })
+//
+//    it('should succeed', async () => {
+//      const txn = await this.TestSimpleGriefing.from(
+//        newOperator,
+//      ).renounceOperator()
+//      await assert.emitWithArgs(txn, 'OperatorUpdated', [
+//        ethers.constants.AddressZero,
+//      ])
+//
+//      const actualOperator = await this.TestSimpleGriefing.getOperator()
+//      assert.equal(actualOperator, ethers.constants.AddressZero)
+//    })
+//  })
 })

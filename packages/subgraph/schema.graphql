@@ -379,6 +379,8 @@ type SimpleGriefingWithFees @entity {
   totalStakeTokens: BigInt
   isReleased: Boolean
   stakeholders: [SimpleGriefingWithFeesStakeholder!]!
+  feeRatio: BigInt
+  managementFee: BigInt
   tokenID: Int
   currentStake: BigInt
   totalBurned: BigInt

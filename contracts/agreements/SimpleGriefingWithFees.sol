@@ -1,5 +1,6 @@
 pragma solidity 0.5.16;
 
+import "../helpers/DecimalMath.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../modules/Griefing.sol";
 import "../modules/EventMetadata.sol";
@@ -29,9 +30,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     struct Data {
         address staker;
         address counterparty;
-        uint256 totalValue;
         uint256 totalStakeTokens;
-        bool released;
         mapping (address => uint256) stakeholders;
         uint256 feeRatio;
         uint256 managementFee;
@@ -74,6 +73,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // set storage values
         _data.staker = staker;
         _data.counterparty = counterparty;
+        _data.feeRatio = feeRatio;
+        _data.managementFee = managementFee;
 
         // set operator
         if (operator != address(0)) {
@@ -83,17 +84,23 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // set griefing ratio
         Griefing._setRatio(staker, tokenID, ratio, ratioType);
 
-        // sest feeRatio
-        _data.feeRatio = feeRatio;
-        _data.managementFee = managementFee;
-
         // set metadata
         if (metadata.length != 0) {
             EventMetadata._setMetadata(metadata);
         }
 
         // log initialization params
-        emit Initialized(operator, staker, counterparty, tokenID, ratio, ratioType, metadata);
+        emit Initialized(
+            operator,
+            staker,
+            counterparty,
+            tokenID,
+            ratio,
+            ratioType,
+            feeRatio,
+            managementFee,
+            metadata
+        );
     }
 
     // state functions
@@ -120,51 +127,52 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // add stake
         address staker = _data.staker;
+        TokenManager.Tokens tokenID = Griefing.getTokenID(staker);
+        uint256 totalValue = Deposit.getDeposit(tokenID, staker);
+        Staking._addStake(tokenID, staker, msg.sender, amountToAdd);
+
+        // generate stake tokens
+        uint256 tokensToAdd = 1e18;
+        if (totalValue > 0) {
+            tokensToAdd = amountToAdd.div(totalValue).mul(_data.totalStakeTokens);
+        }
         address stakeholder;
         if (isOperator(msg.sender)) {
             stakeholder = staker;
         } else {
             stakeholder = msg.sender;
         }
-        Staking._addStake(Griefing.getTokenID(staker), stakeholder, stakeholder, amountToAdd);
-
-        // generate stake tokens
-        uint256 tokensToAdd = 1;
-        if (_data.totalValue > 0) {
-            tokensToAdd = amountToAdd.div(_data.totalValue).mul(_data.totalStakeTokens);
-        }
-        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].add(tokensToAdd);
+        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].add(tokensToAdd);
         _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
-        _data.totalValue = _data.totalValue.add(amountToAdd);
     }
 
     /// @notice Called by the staker to increase the stake
     ///          - tokens (ERC-20) are transfered from the caller and requires approval of this contract for appropriate amount
     /// @dev Access Control: staker OR operator
     ///      State Machine: anytime
-    /// @param amountToRedeem uint256 amount of stakeTokens (18 decimals) to be redeemed for stake
+    /// @param tokensToRedeem uint256 amount of stakeTokens (18 decimals) to be redeemed for stake
     function redeemStake(uint256 tokensToRedeem, address stakeholder) public {
         // restrict access
         require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
 
-        // declare variables in memory
-        uint256 userTokensAvailable = _data.stakeholders[stakeholder];
-        uint256 nmrToRedeem = (tokensToRedeem.div(_data.totalStakeTokens)).mul(_data.totalValue);
-
-        // make sure stake redemption is allowed
-        require(_data.totalValue > 0, "no stake left to redeem");
-        require(userTokensAvailable >= tokensToRedeem, "cannot redeem more stake than you have");
-
         // declare variable in memory
         address staker = _data.staker;
+        TokenManager.Tokens tokenID = Griefing.getTokenID(staker);
+
+        uint256 totalValue = Deposit.getDeposit(tokenID, staker);
+        require(totalValue > 0, "no stake left to redeem");
+
+        uint256 userTokensAvailable = _data.stakeholders[stakeholder];
+        require(userTokensAvailable >= tokensToRedeem, "cannot redeem more stake than you have");
+
+        uint256 nmrToRedeem = (tokensToRedeem.div(_data.totalStakeTokens)).mul(totalValue);
 
         // redeem stake
-        Staking._takeStake(Griefing.getTokenID(staker), staker, msg.sender, nmrToRedeem);
+        Staking._takeStake(Griefing.getTokenID(staker), staker, stakeholder, nmrToRedeem);
 
         // remove stake tokens
         _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].sub(tokensToRedeem);
         _data.totalStakeTokens = _data.totalStakeTokens.sub(tokensToRedeem);
-        _data.totalValue = _data.totalValue.sub(nmrToRedeem);
     }
 
 
@@ -179,17 +187,17 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // declare variable in memory
         address staker = _data.staker;
+        TokenManager.Tokens tokenID = Griefing.getTokenID(staker);
+        uint256 totalValue = Deposit.getDeposit(tokenID, staker);
 
         // give some proportion of stake tokens to the staker to represent their increased share
-        uint256 profit = amountToAdd.div(_data.totalValue);
+        uint256 profit = amountToAdd.div(totalValue);
         uint256 tokenInflation = profit.mul(_data.feeRatio).mul(_data.totalStakeTokens);
         _data.stakeholders[staker] = _data.stakeholders[staker].add(tokenInflation);
         _data.totalStakeTokens = _data.totalStakeTokens.add(tokenInflation);
 
         // add stake
         Staking._addStake(Griefing.getTokenID(staker), staker, msg.sender, amountToAdd);
-        _data.totalValue = _data.totalValue.add(amountToAdd);
-
     }
 
     /// @notice Called by the counterparty to punish the stake
@@ -207,19 +215,20 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // declare variable in memory
         address staker = _data.staker;
+        TokenManager.Tokens tokenID = Griefing.getTokenID(staker);
+        uint256 totalValue = Deposit.getDeposit(tokenID, staker);
 
         // give some proportion of stake tokens to the staker to represent their increased share
-        uint256 loss = punishment.div(_data.totalValue);
+        uint256 loss = punishment.div(totalValue);
         uint256 tokenDeflation = loss.mul(_data.feeRatio).mul(_data.totalStakeTokens);
         _data.stakeholders[staker] = _data.stakeholders[staker].sub(tokenDeflation);
         _data.totalStakeTokens = _data.totalStakeTokens.sub(tokenDeflation);
 
         // execute griefing
         cost = Griefing._grief(msg.sender, staker, punishment, message);
-        _data.totalValue = _data.totalValue.sub(punishment);
     }
 
-    function distributeManagementFee() {
+    function distributeManagementFee() public {
         // restrict access
         require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
 
@@ -228,18 +237,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
 
         // inflate tokens by managementFee * totalStakeTokens
         uint256 inflation = _data.managementFee.mul(_data.totalStakeTokens);
-        _data.stakeholders[staker] = _data.stakeholder[staker].add(inflation);
+        _data.stakeholders[staker] = _data.stakeholders[staker].add(inflation);
         _data.totalStakeTokens = _data.totalStakeTokens.add(inflation);
-    }
-
-    /// @notice Called by the counterparty to release the stake to the staker
-    /// @dev Access Control: counterparty OR operator
-    ///      State Machine: anytime
-    function releaseStake() public {
-        // restrict access
-        require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
-
-        _data.released = true;
     }
 
     /// @notice Called by the operator to transfer control to new operator
@@ -333,12 +332,6 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         return getAgreementStatus() == AgreementStatus.isStaked;
     }
 
-    /// @notice Validate if the stake has been released
-    /// @return validity bool true if stake is released
-    function isReleased() public view returns (bool validity) {
-        return _data.released;
-    }
-
     /// @notice Get the total number of stake tokens assigned to stakeholders
     /// @return tokens uint256 total stake tokens
     function getTotalStakeTokens() public view returns (uint256 tokens) {
@@ -349,10 +342,19 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     /// @param stakeholder address for which to get tokens
     /// @return tokens uint256 number of tokens for this stakeholder
     function getStakeholderValue(address stakeholder) public view returns (uint256 tokens) {
-        if (_data.totalValue > 0) {
-            return _data.stakeholders[stakeholder].div(_data.totalStakeTokens).mul(_data.totalValue);
+        address staker = _data.staker;
+        uint256 totalValue = Deposit.getDeposit(Griefing.getTokenID(staker), staker);
+        if (totalValue > 0) {
+            return _data.stakeholders[stakeholder].div(_data.totalStakeTokens).mul(totalValue);
         } else {
             return 0;
         }
+    }
+
+    /// @notice Get the number of stake tokens assigned to given stakeholde
+    /// @param stakeholder address for which to get tokens
+    /// @return tokens uint256 number of tokens for this stakeholder
+    function getStakeholderTokens(address stakeholder) public view returns (uint256 tokens) {
+        return _data.stakeholders[stakeholder];
     }
 }
