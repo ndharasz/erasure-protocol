@@ -126,26 +126,25 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     /// @dev Access Control: staker OR operator
     ///      State Machine: anytime
     /// @param amountToRedeem uint256 amount of stakeTokens (18 decimals) to be redeemed for stake
-    function redeemStake(uint256 amountToRedeem) public {
-        // make sure stake redemption is allowed
-        require(_data.released, "stake must be released by counterparty or operator");
-        require(_data.totalValue > 0, "no stake left to redeem");
+    function redeemStake(uint256 tokensToRedeem, address stakeholder) public {
+        // restrict access
+        require(isCounterparty(msg.sender) || Operated.isOperator(msg.sender), "only counterparty or operator");
 
         // declare variables in memory
-        uint256 userTokens = _data.stakeholders[msg.sender];
-        uint256 tokensToRedeem = amountToRedeem.div(_data.totalValue).mul(_data.totalStakeTokens);
+        uint256 userTokensAvailable = _data.stakeholders[stakeholder];
+        uint256 nmrToRedeem = (tokensToRedeem.div(_data.totalStakeTokens)).mul(_data.totalValue);
 
-        // make sure they aren't redeeming more than allowed
-        require(userTokens > 0, "you have no stake in this contract");
-        require(userTokens >= tokensToRedeem, "cannot redeem more stake than you have");
+        // make sure stake redemption is allowed
+        require(_data.totalValue > 0, "no stake left to redeem");
+        require(userTokensAvailable >= tokensToRedeem, "cannot redeem more stake than you have");
 
         // redeem stake
-        Staking._takeStake(Griefing.getTokenID(_data.staker), msg.sender, msg.sender, amountToRedeem);
+        Staking._takeStake(Griefing.getTokenID(_data.staker), _data.staker, stakeholder, nmrToRedeem);
 
         // remove stake tokens
-        _data.stakeholders[msg.sender] = _data.stakeholders[msg.sender].sub(tokensToRedeem);
+        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholer].sub(tokensToRedeem);
         _data.totalStakeTokens = _data.totalStakeTokens.sub(tokensToRedeem);
-        _data.totalValue = _data.totalValue.sub(amountToRedeem);
+        _data.totalValue = _data.totalValue.sub(nmrToRedeem);
     }
 
 
