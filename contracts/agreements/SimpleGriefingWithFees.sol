@@ -240,9 +240,9 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         address staker = _data.staker;
 
         // inflate tokens by managementFee * totalStakeTokens
-        uint256 inflation = _data.managementFee.mul(_data.totalStakeTokens);
-        _data.stakeholders[staker] = _data.stakeholders[staker].add(inflation);
-        _data.totalStakeTokens = _data.totalStakeTokens.add(inflation);
+        uint256 inflation = DecimalMath.mul(_data.managementFee, _data.totalStakeTokens);
+        _data.stakeholders[staker] = SafeMath.add(_data.stakeholders[staker], inflation);
+        _data.totalStakeTokens = SafeMath.add(_data.totalStakeTokens, inflation);
     }
 
     /// @notice Called by the operator to transfer control to new operator

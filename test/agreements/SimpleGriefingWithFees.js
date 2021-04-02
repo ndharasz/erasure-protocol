@@ -27,8 +27,8 @@ describe('SimpleGriefingWithFees', function() {
   const ratio = 2
   const ratioE18 = ethers.utils.parseEther(ratio.toString())
   const ratioType = RATIO_TYPES.Dec
-  const feeRatio = ethers.utils.parseEther('10')
-  const mgmtFee = ethers.utils.parseEther('10')
+  const feeRatio = web3.utils.toWei('.1')
+  const mgmtFee = web3.utils.toWei('.1')
   const staticMetadata = 'TESTING'
   let currentStake // to increment as we go
 
@@ -340,9 +340,7 @@ describe('SimpleGriefingWithFees', function() {
         await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
       )))
 
-      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
-        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
-      ))*mgmtFee)
+      console.log("managementfee things")
       await this.TestSimpleGriefingWithFees.from(operator).distributeManagementFee()
       console.log(web3.utils.toWei(web3.utils.hexToNumberString(
         await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
