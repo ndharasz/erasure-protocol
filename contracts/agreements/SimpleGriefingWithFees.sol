@@ -116,11 +116,17 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
     ///      State Machine: anytime
     /// @param amountToAdd uint256 amount of tokens (18 decimals) to be added to the stake
     function increaseStake(uint256 amountToAdd) public {
-        require(!isCounterparty(msg.sender), "only staker or operator");
+        require(!isCounterparty(msg.sender), "only stakeholder or operator");
 
         // add stake
         address staker = _data.staker;
-        Staking._addStake(Griefing.getTokenID(staker), msg.sender, msg.sender, amountToAdd);
+        address stakeholder;
+        if (isOperator(msg.sender)) {
+            stakeholder = staker;
+        } else {
+            stakeholder = msg.sender;
+        }
+        Staking._addStake(Griefing.getTokenID(staker), stakeholder, stakeholder, amountToAdd);
 
         // generate stake tokens
         uint256 tokensToAdd = 1;
@@ -153,7 +159,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         address staker = _data.staker;
 
         // redeem stake
-        Staking._takeStake(Griefing.getTokenID(staker), staker, msg.sender, amountToRedeem);
+        Staking._takeStake(Griefing.getTokenID(staker), staker, msg.sender, nmrToRedeem);
 
         // remove stake tokens
         _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].sub(tokensToRedeem);
@@ -221,7 +227,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         address staker = _data.staker;
 
         // inflate tokens by managementFee * totalStakeTokens
-        inflation = _data.managementFee.mul(_data.totalStakeTokens);
+        uint256 inflation = _data.managementFee.mul(_data.totalStakeTokens);
         _data.stakeholders[staker] = _data.stakeholder[staker].add(inflation);
         _data.totalStakeTokens = _data.totalStakeTokens.add(inflation);
     }
