@@ -27,8 +27,10 @@ describe('SimpleGriefingWithFees', function() {
   const ratio = 2
   const ratioE18 = ethers.utils.parseEther(ratio.toString())
   const ratioType = RATIO_TYPES.Dec
-  const feeRatio = web3.utils.toWei('.1')
-  const mgmtFee = web3.utils.toWei('.1')
+  const feeRatio = 0.1
+  const mgmtFee = 0.1
+  const feeRatioE18 = web3.utils.toWei(feeRatio.toString())
+  const mgmtFeeE18 = web3.utils.toWei(mgmtFee.toString())
   const staticMetadata = 'TESTING'
   let currentStake // to increment as we go
 
@@ -51,8 +53,8 @@ describe('SimpleGriefingWithFees', function() {
     tokenID,
     ratioE18,
     ratioType,
-    feeRatio,
-    mgmtFee,
+    feeRatioE18,
+    mgmtFeeE18,
     Buffer.from(staticMetadata),
   ]
 
@@ -196,7 +198,6 @@ describe('SimpleGriefingWithFees', function() {
     })
   })
 
-// TODO: add 3rd party stakers
   describe('SimpleGriefingWithFees.increaseStake', () => {
     let DEFAULT_AMOUNT = 500 // 500 token weis
 
@@ -292,9 +293,12 @@ describe('SimpleGriefingWithFees', function() {
     let amountToAdd = 500 // 500 token weis
 
     const reward = async sender => {
-      const initialVal = web3.utils.hexToNumberString(
-          (await this.TestSimpleGriefingWithFees.getStakeholderValue(staker))._hex
-      )
+      const initialTokens = web3.utils.fromWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)
+      ))
+      let expectedTokenInc = web3.utils.toWei((feeRatio*amountToAdd/currentStake).toString())
+      console.log(`expecting ${expectedTokenInc} more tokens`)
+
       // update currentStake
       currentStake = (await this.TestSimpleGriefingWithFees.getStake()).toNumber()
 
@@ -303,7 +307,7 @@ describe('SimpleGriefingWithFees', function() {
         amountToAdd,
       )
 
-      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+      console.log(web3.utils.fromWei(web3.utils.hexToNumberString(
         await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
       )))
       const txn = await this.TestSimpleGriefingWithFees.from(sender).reward(amountToAdd)
@@ -335,14 +339,19 @@ describe('SimpleGriefingWithFees', function() {
         web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)),
         currentStake
       )
-
-      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+      const currTokens = web3.utils.fromWei(web3.utils.hexToNumberString(
         await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
-      )))
+      ))
+      console.log(currTokens - initialTokens)
+      assert.equal(currTokens - initialTokens, expectedTokenInc)
+
 
       console.log("managementfee things")
+      console.log(web3.utils.fromWei(web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
+      ))*mgmtFee)
       await this.TestSimpleGriefingWithFees.from(operator).distributeManagementFee()
-      console.log(web3.utils.toWei(web3.utils.hexToNumberString(
+      console.log(web3.utils.fromWei(web3.utils.hexToNumberString(
         await this.TestSimpleGriefingWithFees.getTotalStakeTokens()
       )))
     }
