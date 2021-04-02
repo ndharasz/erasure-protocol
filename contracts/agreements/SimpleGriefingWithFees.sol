@@ -134,7 +134,7 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         // generate stake tokens
         uint256 tokensToAdd = 1e18;
         if (totalValue > 0) {
-            tokensToAdd = amountToAdd.div(totalValue).mul(_data.totalStakeTokens);
+            tokensToAdd = DecimalMath.mul(_data.totalStakeTokens, DecimalMath.div(amountToAdd, totalValue));
         }
         address stakeholder;
         if (isOperator(msg.sender)) {
@@ -142,8 +142,8 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         } else {
             stakeholder = msg.sender;
         }
-        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].add(tokensToAdd);
-        _data.totalStakeTokens = _data.totalStakeTokens.add(tokensToAdd);
+        _data.stakeholders[stakeholder] = SafeMath.add(_data.stakeholders[stakeholder], tokensToAdd);
+        _data.totalStakeTokens = SafeMath.add(_data.totalStakeTokens, tokensToAdd);
     }
 
     /// @notice Called by the staker to increase the stake
@@ -165,14 +165,14 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         uint256 userTokensAvailable = _data.stakeholders[stakeholder];
         require(userTokensAvailable >= tokensToRedeem, "cannot redeem more stake than you have");
 
-        uint256 nmrToRedeem = (tokensToRedeem.div(_data.totalStakeTokens)).mul(totalValue);
+        uint256 nmrToRedeem = DecimalMath.mul(totalValue, DecimalMath.div(tokensToRedeem, _data.totalStakeTokens));
 
         // redeem stake
         Staking._takeStake(Griefing.getTokenID(staker), staker, stakeholder, nmrToRedeem);
 
         // remove stake tokens
-        _data.stakeholders[stakeholder] = _data.stakeholders[stakeholder].sub(tokensToRedeem);
-        _data.totalStakeTokens = _data.totalStakeTokens.sub(tokensToRedeem);
+        _data.stakeholders[stakeholder] = SafeMath.sub(_data.stakeholders[stakeholder], tokensToRedeem);
+        _data.totalStakeTokens = SafeMath.sub(_data.totalStakeTokens, tokensToRedeem);
     }
 
 
@@ -191,10 +191,12 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         uint256 totalValue = Deposit.getDeposit(tokenID, staker);
 
         // give some proportion of stake tokens to the staker to represent their increased share
-        uint256 profit = amountToAdd.div(totalValue);
-        uint256 tokenInflation = profit.mul(_data.feeRatio).mul(_data.totalStakeTokens);
-        _data.stakeholders[staker] = _data.stakeholders[staker].add(tokenInflation);
-        _data.totalStakeTokens = _data.totalStakeTokens.add(tokenInflation);
+        // tokenInflation = totalStakeTokens * feeRatio * (amountToAdd / totalValue)
+        uint256 tokenInflation = DecimalMath.mul(_data.totalStakeTokens,
+            DecimalMath.mul(_data.feeRatio, DecimalMath.div(amountToAdd, totalValue))
+        );
+        _data.stakeholders[staker] = SafeMath.add(_data.stakeholders[staker], tokenInflation);
+        _data.totalStakeTokens = SafeMath.add(_data.totalStakeTokens, tokenInflation);
 
         // add stake
         Staking._addStake(Griefing.getTokenID(staker), staker, msg.sender, amountToAdd);
@@ -219,10 +221,12 @@ contract SimpleGriefingWithFees is Griefing, EventMetadata, Operated, Template {
         uint256 totalValue = Deposit.getDeposit(tokenID, staker);
 
         // give some proportion of stake tokens to the staker to represent their increased share
-        uint256 loss = punishment.div(totalValue);
-        uint256 tokenDeflation = loss.mul(_data.feeRatio).mul(_data.totalStakeTokens);
-        _data.stakeholders[staker] = _data.stakeholders[staker].sub(tokenDeflation);
-        _data.totalStakeTokens = _data.totalStakeTokens.sub(tokenDeflation);
+        // tokenDeflation = totalStakeTokens * feeRatio * (punishment / totalValue)
+        uint256 tokenDeflation = DecimalMath.mul(_data.totalStakeTokens,
+            DecimalMath.mul(_data.feeRatio, DecimalMath.div(punishment, totalValue))
+        );
+        _data.stakeholders[staker] = SafeMath.sub(_data.stakeholders[staker], tokenDeflation);
+        _data.totalStakeTokens = SafeMath.sub(_data.totalStakeTokens, tokenDeflation);
 
         // execute griefing
         cost = Griefing._grief(msg.sender, staker, punishment, message);

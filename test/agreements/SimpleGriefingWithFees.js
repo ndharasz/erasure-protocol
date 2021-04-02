@@ -201,9 +201,16 @@ describe('SimpleGriefingWithFees', function() {
     let DEFAULT_AMOUNT = 500 // 500 token weis
 
     const increaseStake = async (sender, amountToAdd) => {
-      const initialVal = web3.utils.hexToNumberString(
-          (await this.TestSimpleGriefingWithFees.getStakeholderValue(staker))._hex
+      const initialTokens = web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)
       )
+      let expectedTokenInc;
+      if (currentStake == 0) {
+        expectedTokenInc = web3.utils.toWei('1')
+      } else {
+        expectedTokenInc = web3.utils.toWei((amountToAdd/currentStake).toString())
+      }
+
       await NMR.from(sender).approve(
         this.TestSimpleGriefingWithFees.contractAddress,
         amountToAdd,
@@ -231,11 +238,10 @@ describe('SimpleGriefingWithFees', function() {
         web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getTotalStakeTokens()),
         web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker))
       )
-      console.log(web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)))
-      await assert.equal(
-        web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)),
-        web3.utils.toWei((currentStake/amountToAdd).toString())
+      const currTokens = web3.utils.hexToNumberString(
+        await this.TestSimpleGriefingWithFees.getStakeholderTokens(staker)
       )
+      await assert.equal(currTokens - initialTokens, expectedTokenInc)
       await assert.equal(
         web3.utils.hexToNumberString(await this.TestSimpleGriefingWithFees.getStakeholderValue(staker)),
         currentStake,
